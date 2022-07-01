@@ -7,18 +7,20 @@ import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "hardhat/console.sol";
 
-pragma solidity ^0.6.0;
+pragma solidity ^0.8.0;
 
-error RandomIpfsNft__RangeOutOfBounds;
+error RandomIpfsNft__RangeOutOfBounds();
+error NeedMoreEthSent();
+error TransferFailed();
 
-contract RandomIpfsNft is VRFConsumerBaseV2, ERC721URIStorage {
+contract RandomIpfsNft is VRFConsumerBaseV2, ERC721URIStorage, Ownable {
 
     enum Breed {
         PUG,
-        SHIBA INU,
-        ST. BERNARD
+        SHIBA_INU,
+        ST_BERNARD
     }
-
+    //VRF needed variables
     VRFCoordinatorV2Interface private immutable i_vrfCoordinator;
     uint64 private immutable i_subscriptionId;
     bytes32 private immutable i_gasLane;
@@ -26,24 +28,40 @@ contract RandomIpfsNft is VRFConsumerBaseV2, ERC721URIStorage {
     uint16 private constant REQUEST_CONFIRMATIONS = 3;
     uint16 private constant NUM_WORDS = 1;
 
+    //index of addresses
     mapping(uint256=>address) public s_requestIdToSender;
-
+    
+    //NFT Variables
     uint256 public s_tokenCounter = 0;
     uint256 public Max_Chance_Value = 100;
+    string[] internal s_dogTokenUris;
+    uint256 public immutable i_mintFee;
+
+    //EVENTS
+    event NftRequested(uint256 indexed requestId, address requester);
+    event NftMinted(Breed dogBreed, address minter);
 
     constructor(
         address vrfCoordinatorV2,
         uint64 subscriptionId, 
         bytes32 gasLane, 
-        uint32 callbackGasLimit
+        uint32 callbackGasLimit,
+        string[3] memory dogTokenUris,
+        uint256 mintFee
         )VRFConsumerBaseV2(vrfCoordinatorV2) ERC721("Random IPFS NFT", "INFT")
         {
+            i_vrfCoordinator = VRFCoordinatorV2Interface(vrfCoordinatorV2);
             i_subscriptionId = subscriptionId;
             i_gasLane = gasLane;
             i_callbackGasLimit = callbackGasLimit;
+            s_dogTokenUris = dogTokenUris;
+            i_mintFee = mintFee;
         }
 
-    function requestNft()public returns(uint256 requestId){
+    function requestNft()public payable returns(uint256 requestId){
+        if(msg.value < i_mintFee){
+            revert NeedMoreEthSent();
+        }
         requestId = i_vrfCoordinator.requestRandomWords(
             i_gasLane, 
             i_subscriptionId, 
@@ -52,6 +70,7 @@ contract RandomIpfsNft is VRFConsumerBaseV2, ERC721URIStorage {
             NUM_WORDS
             );
             s_requestIdToSender[requestId] = msg.sender;
+            emit NftRequested(requestId, msg.sender);
     }
 
     function fulfillRandomWords(
@@ -68,9 +87,20 @@ contract RandomIpfsNft is VRFConsumerBaseV2, ERC721URIStorage {
             //always gives number between 0-99 
             Breed dogBreed = getBreedFromModdedRng(moddedRng);
             _safeMint(dogOwner, newTokenId);
+            //function from uriStorage, typecast dogbreed to get index for uri
+            _setTokenURI(newTokenId, s_dogTokenUris[uint256(dogBreed)]);
+            emit NftMinted(dogBreed, dogOwner);
         }
 
-    function getBreedFromModdedRng(uint256 moddedRng) public pure returns(Breed){
+    function withdraw() public payable onlyOwner{
+        uint256 amount = address(this).balance;
+        (bool success, ) = payable(msg.sender).call{value: amount}("");
+        if(!success){
+            revert TransferFailed();
+        }
+    }
+
+    function getBreedFromModdedRng(uint256 moddedRng) public view returns(Breed){
         uint256 cumulativeSum = 0;
         uint256[3] memory chanceArray = getChanceArray();
         for (uint256 i = 0; i < chanceArray.length; i++) {
@@ -80,15 +110,26 @@ contract RandomIpfsNft is VRFConsumerBaseV2, ERC721URIStorage {
             }
             cumulativeSum += chanceArray[i];
         }
-        revert RandomIpfsNft__RangeOutOfBounds;
+        revert RandomIpfsNft__RangeOutOfBounds();
     }
 
-    function getChanceArray() public pure returns(uint256[3] memory){
+    function getChanceArray() public view returns(uint256[3] memory){
         // index 0:10% 1:20% 2:60%
         return [10,30,Max_Chance_Value];
     }
 
-    function tokenURI(uint256) public view override returns(string memory){
+    // Don't need tokenURI function when using URIstorage
+    // function tokenURI(uint256) public view override returns(string memory){
+    // }
+    function getMintFee() public view returns(uint256){
+        return i_mintFee;
+    }
 
+    function getDogTokenUris() public view returns(string[] memory){
+        return s_dogTokenUris;
+    }
+
+    function getAddresses(uint _where) public view returns(address){
+        return s_requestIdToSender[_where];
     }
 }
