@@ -1,13 +1,14 @@
 //SPDX
 
+
+pragma solidity ^0.8.0;
+
 //comes with function to set token uri, same as erc721 with some additional customization, constructor can still use erc721
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "hardhat/console.sol";
-
-pragma solidity ^0.8.0;
 
 error RandomIpfsNft__RangeOutOfBounds();
 error NeedMoreEthSent();
@@ -86,6 +87,7 @@ contract RandomIpfsNft is VRFConsumerBaseV2, ERC721URIStorage, Ownable {
             uint256 moddedRng = randomWords[0] % Max_Chance_Value;
             //always gives number between 0-99 
             Breed dogBreed = getBreedFromModdedRng(moddedRng);
+            s_tokenCounter += s_tokenCounter;
             _safeMint(dogOwner, newTokenId);
             //function from uriStorage, typecast dogbreed to get index for uri
             _setTokenURI(newTokenId, s_dogTokenUris[uint256(dogBreed)]);
